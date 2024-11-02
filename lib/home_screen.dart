@@ -12,19 +12,34 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   List<Location> locations = [];
   bool isLoading = false;
+  final _formKey = GlobalKey<FormState>();
+
+  // Controllers for form fields
+  final _pseudoController = TextEditingController();
+  final _numeroController = TextEditingController();
+  final _latController = TextEditingController();
+  final _longController = TextEditingController();
+
+  @override
+  void dispose() {
+    _pseudoController.dispose();
+    _numeroController.dispose();
+    _latController.dispose();
+    _longController.dispose();
+    super.dispose();
+  }
 
   Future<void> getLocations() async {
     try {
       await ApiService.get(endPoint: "").then((value) {
-      for (var item in value) {
-        setState(() {
-          locations.add(Location.fromJson(item));
-        });
-      }
-    });
+        for (var item in value) {
+          setState(() {
+            locations.add(Location.fromJson(item));
+          });
+        }
+      });
       setState(() {
-            isLoading = false;
-
+        isLoading = false;
       });
     } catch (e) {
       setState(() {
@@ -32,6 +47,153 @@ class _HomeScreenState extends State<HomeScreen> {
       });
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Failed to load locations')),
+      );
+    }
+  }
+
+  void _showAddLocationSheet() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      builder: (BuildContext context) {
+        return Padding(
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.of(context).viewInsets.bottom,
+          ),
+          child: Container(
+            padding: const EdgeInsets.all(16),
+            child: Form(
+              key: _formKey,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        'Add New Location',
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.close),
+                        onPressed: () => Navigator.pop(context),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  TextFormField(
+                    controller: _pseudoController,
+                    decoration: const InputDecoration(
+                      labelText: 'Name',
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.person),
+                    ),
+                    validator: (value) {
+                      if (value == null || value.isEmpty) {
+                        return 'Please enter a name';
+                      }
+                      return null;
+                    },
+                  ),
+                  const SizedBox(height: 16),
+                  TextFormField(
+                    controller: _numeroController,
+                    decoration: const InputDecoration(
+                      labelText: 'Phone Number',
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.phone),
+                    ),
+                    keyboardType: TextInputType.phone,
+                    validator: (value) {
+                      if (value == null || value.isEmpty) {
+                        return 'Please enter a phone number';
+                      }
+                      return null;
+                    },
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextFormField(
+                          controller: _latController,
+                          decoration: const InputDecoration(
+                            labelText: 'Latitude',
+                            border: OutlineInputBorder(),
+                            prefixIcon: Icon(Icons.location_on),
+                          ),
+                          keyboardType: TextInputType.number,
+                          validator: (value) {
+                            if (value == null || value.isEmpty) {
+                              return 'Required';
+                            }
+                            return null;
+                          },
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: TextFormField(
+                          controller: _longController,
+                          decoration: const InputDecoration(
+                            labelText: 'Longitude',
+                            border: OutlineInputBorder(),
+                            prefixIcon: Icon(Icons.location_on),
+                          ),
+                          keyboardType: TextInputType.number,
+                          validator: (value) {
+                            if (value == null || value.isEmpty) {
+                              return 'Required';
+                            }
+                            return null;
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 24),
+                  ElevatedButton(
+                    onPressed: _handleSubmit,
+                    style: ElevatedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                    ),
+                    child: const Text('Add Location'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  void _handleSubmit() async {
+    if (_formKey.currentState!.validate()) {
+      final newLocation = Location(
+        pseudo: _pseudoController.text,
+        numero: _numeroController.text,
+        lat: _latController.text,
+        long: _longController.text,
+      );
+
+      await ApiService.post(endPoint: "", body: newLocation.toJson());
+
+      // Clear form
+      _pseudoController.clear();
+      _numeroController.clear();
+      _latController.clear();
+      _longController.clear();
+      getLocations();
+      Navigator.pop(context);
+
+      // Show success message
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Location added successfully')),
       );
     }
   }
@@ -56,6 +218,10 @@ class _HomeScreenState extends State<HomeScreen> {
             },
           ),
         ],
+      ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: _showAddLocationSheet,
+        child: const Icon(Icons.add),
       ),
       body: Stack(
         children: [
@@ -152,7 +318,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         ],
                       ),
                       onTap: () {
-                       
+                        // Handle location tap
                       },
                     ),
                   );
