@@ -1,10 +1,11 @@
-import 'dart:ffi';
+
 
 import 'package:bestlocation/map_screen.dart';
 import 'package:bestlocation/model/location.dart';
 import 'package:bestlocation/services/api_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_speed_dial/flutter_speed_dial.dart';
+import 'package:geolocator/geolocator.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -24,8 +25,10 @@ class _HomeScreenState extends State<HomeScreen> {
   final _latController = TextEditingController();
   final _longController = TextEditingController();
 
+  Position? _currentPosition;
+
   @override
-  void initState() {
+  void initState()  {
     super.initState();
     isLoading = true;
     getLocations();
@@ -52,14 +55,47 @@ class _HomeScreenState extends State<HomeScreen> {
         locations = fetchedLocations;
         isLoading = false;
       });
+      _startLocationUpdates();
     } catch (e) {
       setState(() {
         isLoading = false;
       });
       ScaffoldMessenger.of(context).showSnackBar(
-         SnackBar(content: Text('Failed to load locations ${e.toString()}')),
+        SnackBar(content: Text('Failed to load locations ${e.toString()}')),
       );
     }
+  }
+
+  void _startLocationUpdates() {
+    Geolocator.getPositionStream(
+      locationSettings: const LocationSettings(
+          distanceFilter: 10, timeLimit: Duration(minutes: 1)),
+    ).listen((Position position) {
+      setState(() {
+        _currentPosition = position;
+        print(position);
+      });
+      _updateCurrentLocation();
+    });
+  }
+
+  void _updateCurrentLocation() async {
+    if (_currentPosition == null) return;
+
+    final currentLocation = Location(
+      pseudo: "Current Location",
+      numero: "N/A",
+      lat: _currentPosition!.latitude.toString(),
+      long: _currentPosition!.longitude.toString(),
+    );
+
+    setState(() {
+      locations
+          .removeWhere((location) => location.pseudo == "Current Location");
+      locations.insert(0, currentLocation);
+     
+    });
+    //  await ApiService.post(endPoint: "", body: currentLocation.toJson());
   }
 
   void _showAddLocationSheet() {
@@ -166,7 +202,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                 return 'Required';
                               }
                               if (double.tryParse(value) is! double) {
-                                return 'Invalid Latitude';
+                                return 'Invalid Longitude';
                               }
                               return null;
                             },
@@ -247,17 +283,23 @@ class _HomeScreenState extends State<HomeScreen> {
             child: const Icon(Icons.map),
             label: 'View Map',
             onTap: () async {
-              await Navigator.push(
+              final newLocation = await Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (context) => MapScreen(locations: locations),
+                  builder: (context) => MapScreen(
+                    locations: locations,
+                    isAddingLocation: true,
+                  ),
                 ),
               );
-              // Refresh locations after returning from map
-              setState(() {
-                isLoading = true;
-              });
-              await getLocations();
+              if (newLocation != null) {
+                setState(() {
+                  locations.add(newLocation);
+                });
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Location added successfully')),
+                );
+              }
             },
           ),
           SpeedDialChild(
@@ -313,10 +355,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   const SizedBox(height: 24),
                   ElevatedButton.icon(
                     onPressed: () {
-                      setState(() {
-                        isLoading = true;
-                      });
-                      getLocations();
+                     Navigator.pushReplacement(context, MaterialPageRoute(builder:  (context) => HomeScreen()));
                     },
                     icon: const Icon(Icons.refresh),
                     label: const Text('Load Locations'),
@@ -376,15 +415,16 @@ class _HomeScreenState extends State<HomeScreen> {
                               Icon(Icons.location_on,
                                   size: 16, color: Colors.grey[600]),
                               const SizedBox(width: 8),
+                              
                               Text(
-                                '${location.lat ?? 'N/A'}, ${location.long ?? 'N/A'}',
+                                '${location.lat! ?? 'N/A'}, ${location.long! ?? 'N/A'}',
                                 style: TextStyle(color: Colors.grey[600]),
                               ),
                             ],
                           ),
                         ],
                       ),
-                      onTap: () {
+                      onLongPress: () {
                         showDialog(
                           context: context,
                           builder: (context) {

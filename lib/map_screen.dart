@@ -1,9 +1,8 @@
-// map_screen.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:bestlocation/model/location.dart';
-import 'package:bestlocation/services/api_service.dart';
+import 'package:geolocator/geolocator.dart';
 
 class MapScreen extends StatefulWidget {
   final List<Location> locations;
@@ -20,16 +19,35 @@ class MapScreen extends StatefulWidget {
 }
 
 class _MapScreenState extends State<MapScreen> {
-  // Map controller
   final MapController _mapController = MapController();
-
-  // Selected position
   LatLng? _selectedPosition;
+  Position? _currentPosition;
+
+  @override
+  void initState() {
+    super.initState();
+    _getCurrentLocation();
+  }
+
+  Future<void> _getCurrentLocation() async {
+    try {
+      Geolocator.getPositionStream(
+        locationSettings: const LocationSettings(
+            distanceFilter: 10, timeLimit: Duration(minutes: 1)),
+      ).listen((Position position) {
+        setState(() {
+          _currentPosition = position;
+          print(position);
+        });
+      });
+    } catch (e) {
+      print("Error fetching location: $e");
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    // Create markers from existing locations
-    List<Marker> markers = widget.locations.map((location) {
+    List<Marker> markers = widget.locations.sublist(1).map((location) {
       return Marker(
         width: 40.0,
         height: 40.0,
@@ -42,10 +60,11 @@ class _MapScreenState extends State<MapScreen> {
             const Icon(
               Icons.location_on,
               color: Colors.red,
-              size: 40,
+              size: 30,
             ),
             Positioned(
-              top: 0,
+              bottom: 0,
+              left: 5,
               child: Text(
                 location.pseudo ?? '',
                 style: const TextStyle(
@@ -59,22 +78,42 @@ class _MapScreenState extends State<MapScreen> {
       );
     }).toList();
 
-    // Add selected position marker
-    if (_selectedPosition != null) {
+    if (_currentPosition != null) {
       markers.add(
         Marker(
-          width: 40.0,
-          height: 40.0,
-          point: _selectedPosition!,
-          child: const Icon(
-            Icons.location_on,
-            color: Colors.blue,
-            size: 40,
+          width: 50.0,
+          height: 50.0,
+          point:
+              LatLng(_currentPosition!.latitude, _currentPosition!.longitude),
+          child: Column(
+            children: [
+              const Icon(
+                Icons.my_location,
+                color: Colors.blue,
+                size: 30,
+              ),
+              const Text(
+                "You",
+                style: TextStyle(
+                  color: Colors.blue,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
           ),
         ),
       );
     }
-
+    if (_currentPosition == null) {
+      return Scaffold(
+        appBar: AppBar(
+          title: const Text('Map View'),
+        ),
+        body: const Center(
+          child: CircularProgressIndicator(),
+        ),
+      );
+    }
     return Scaffold(
       appBar: AppBar(
         title: const Text('Map View'),
@@ -82,36 +121,33 @@ class _MapScreenState extends State<MapScreen> {
       body: FlutterMap(
         mapController: _mapController,
         options: MapOptions(
-          initialCenter: markers.isNotEmpty
-              ? markers.first.point
-              : LatLng(35.6324, 10.8960), // Center on the first location
+          initialCenter: _currentPosition != null
+              ? LatLng(_currentPosition!.latitude, _currentPosition!.longitude)
+              : (markers.isNotEmpty
+                  ? markers.first.point
+                  : LatLng(35.6324, 10.8960)),
           initialZoom: 15,
           onTap: widget.isAddingLocation
               ? (tapPosition, latLng) {
                   setState(() {
                     _selectedPosition = latLng;
                   });
-                  // Open the form to enter additional details
                   _showAddLocationDialog(latLng);
                 }
-              : null, // Disable onTap if not adding location
+              : null,
         ),
         children: [
           TileLayer(
-            urlTemplate:
-                'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+            urlTemplate: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
             subdomains: const ['a', 'b', 'c'],
           ),
-          MarkerLayer(
-            markers: markers,
-          ),
+          MarkerLayer(markers: markers),
         ],
       ),
     );
   }
 
   void _showAddLocationDialog(LatLng latLng) {
-    // Controllers for the input fields
     final _pseudoController = TextEditingController();
     final _numeroController = TextEditingController();
     final _formKey = GlobalKey<FormState>();
@@ -123,7 +159,7 @@ class _MapScreenState extends State<MapScreen> {
           title: const Text('Add Location Details'),
           content: Form(
             key: _formKey,
-            child: SingleChildScrollView( // Added to prevent overflow
+            child: SingleChildScrollView(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -162,7 +198,6 @@ class _MapScreenState extends State<MapScreen> {
           actions: [
             TextButton(
               onPressed: () {
-                // Close dialog
                 Navigator.pop(context);
               },
               child: const Text('Cancel'),
@@ -170,7 +205,6 @@ class _MapScreenState extends State<MapScreen> {
             TextButton(
               onPressed: () async {
                 if (_formKey.currentState!.validate()) {
-                  // Create new Location object
                   final newLocation = Location(
                     pseudo: _pseudoController.text,
                     numero: _numeroController.text,
@@ -178,13 +212,8 @@ class _MapScreenState extends State<MapScreen> {
                     long: latLng.longitude.toString(),
                   );
 
-                  // Save to API
-                  await ApiService.post(
-                      endPoint: "", body: newLocation.toJson());
-
-                  // Return the new location to HomeScreen
-                  Navigator.pop(context); // Close dialog
-                  Navigator.pop(context, newLocation); // Close MapScreen
+                  Navigator.pop(context);
+                  Navigator.pop(context, newLocation);
                 }
               },
               child: const Text('Add'),
